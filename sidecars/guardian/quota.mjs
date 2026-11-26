@@ -85,8 +85,10 @@ export function parseQuotaGroups(response, now = Date.now()) {
         if (!bucket) {
           return [windowName, { available: false, reason: '未返回此额度窗口' }];
         }
-        const fraction = Number(bucket.remainingFraction);
-        const remaining = bucket.remainingFraction !== undefined && Number.isFinite(fraction)
+        const rawFrac = bucket.remainingFraction;
+        const hasNumericFrac = typeof rawFrac === 'number' || (typeof rawFrac === 'string' && rawFrac.trim() !== '');
+        const fraction = hasNumericFrac ? Number(rawFrac) : NaN;
+        const remaining = Number.isFinite(fraction)
           ? Math.max(0, Math.min(1, fraction))
           : null;
         const resetMs = Date.parse(bucket.resetTime);
@@ -206,12 +208,15 @@ export function evaluateExhaustion({
     Boolean(windowObj?.available)
     && !windowObj.disabled
     && typeof windowObj.remaining === 'number'
-    && windowObj.remaining <= 1e-6;
+    && Number.isFinite(windowObj.remaining)
+    && windowObj.remaining <= 1e-6
+    && Boolean(windowObj.resetAt);
 
   const hasQuota = windowObj =>
     Boolean(windowObj?.available)
     && !windowObj.disabled
     && typeof windowObj.remaining === 'number'
+    && Number.isFinite(windowObj.remaining)
     && windowObj.remaining > 1e-6;
 
   const fiveExhausted = isZero(five);
@@ -229,10 +234,12 @@ export function evaluateExhaustion({
     exhausted = true;
     resetSource = hasQuota(week) || !week.available ? '5h' : 'weekly';
     resetAt = resetSource === '5h' ? (five.resetAt || null) : (week.resetAt || null);
-  } else if (!group) {
+  } else if (!group && quotaSummary) {
     const modelCfg = findClientModelConfig(userStatus, rawModelLabel);
-    const frac = Number(modelCfg?.quotaInfo?.remainingFraction);
-    if (modelCfg?.quotaInfo && Number.isFinite(frac) && frac <= 1e-6) {
+    const rawFrac = modelCfg?.quotaInfo?.remainingFraction;
+    const hasNumericFrac = typeof rawFrac === 'number' || (typeof rawFrac === 'string' && rawFrac.trim() !== '');
+    const frac = hasNumericFrac ? Number(rawFrac) : NaN;
+    if (modelCfg?.quotaInfo?.resetTime && Number.isFinite(frac) && frac <= 1e-6) {
       exhausted = true;
       resetSource = '5h';
       const ms = Date.parse(modelCfg.quotaInfo.resetTime);

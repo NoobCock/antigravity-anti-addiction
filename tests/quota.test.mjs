@@ -136,6 +136,59 @@ test('evaluateExhaustion returns exhausted=false when both 5h and weekly have qu
   assert.equal(res.resetSource, null);
 });
 
+test('evaluateExhaustion never misreports 0% when quota is uninitialized, null, or empty string', () => {
+  const now = Date.parse('2026-11-26T06:30:00Z');
+  const userStatus = {
+    userTier: { id: 'g1-ultra-lite-tier', name: 'Google AI Ultra' },
+    cascadeModelConfigData: {
+      clientModelConfigs: [
+        { label: 'Gemini 4 Carbon (High)', quotaInfo: { remainingFraction: null, resetTime: '2026-11-26T10:30:00Z' } },
+      ],
+    },
+  };
+
+  // No quotaSummary yet
+  const noSummary = evaluateExhaustion({ activeModel: 'Gemini 4 Carbon (High)', userStatus, quotaSummary: null, now });
+  assert.equal(noSummary.exhausted, false);
+
+  // Null / empty string remainingFraction in buckets
+  const nullBucketSummary = {
+    response: {
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          description: 'Models within this group: Gemini 4 Carbon',
+          buckets: [
+            { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: null, resetTime: '2026-12-01T01:00:00Z' },
+            { bucketId: 'gemini-5h', window: '5h', remainingFraction: '', resetTime: '2026-11-26T10:30:00Z' },
+          ],
+        },
+      ],
+    },
+  };
+  const nullRes = evaluateExhaustion({ activeModel: 'Gemini 4 Carbon (High)', userStatus, quotaSummary: nullBucketSummary, now });
+  assert.equal(nullRes.exhausted, false);
+  assert.equal(nullRes.windows.fiveHour.remaining, null);
+  assert.equal(nullRes.windows.weekly.remaining, null);
+
+  // Missing resetTime with 0 fraction (uninitialized placeholder)
+  const noResetSummary = {
+    response: {
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          description: 'Models within this group: Gemini 4 Carbon',
+          buckets: [
+            { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0 },
+          ],
+        },
+      ],
+    },
+  };
+  const noResetRes = evaluateExhaustion({ activeModel: 'Gemini 4 Carbon (High)', userStatus, quotaSummary: noResetSummary, now });
+  assert.equal(noResetRes.exhausted, false);
+});
+
 test('formatResetDateTime and formatRemainingDuration format cleanly', () => {
   const formatted = formatResetDateTime('2026-11-26T10:28:00Z');
   assert.match(formatted, /^\d{4}年\d{2}月\d{2}日 \d{2}:\d{2}$/);
