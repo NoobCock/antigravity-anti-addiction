@@ -1,0 +1,14 @@
+{
+  "name": "antigravity-anti-addiction",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Anti Addiction plugin for Antigravity: Google Health System style vibe-coding quota exhaustion modal",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test --test-force-exit tests/*.test.mjs",
+    "install:plugin": "python manage.py install",
+    "uninstall:plugin": "python manage.py uninstall",
+    "status": "python manage.py status"
+  }
+}

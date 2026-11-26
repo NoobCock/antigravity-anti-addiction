@@ -1,0 +1,12 @@
+{
+  "name": "anti-addiction",
+  "displayName": "Anti Addiction",
+  "description": "还在vibe coding 还在vibe coding！还不赶紧睡觉！再不睡觉，坏叔叔把你抓走！",
+  "version": "1.0.0",
+  "logo": "assets/logo.svg",
+  "suggestedPrompts": [
+    "打开 Anti Addiction 面板查看当前模型额度状态",
+    "预览 Gemini RGB 防沉迷弹窗效果",
+    "预览 Claude 橙色防沉迷弹窗效果"
+  ]
+}

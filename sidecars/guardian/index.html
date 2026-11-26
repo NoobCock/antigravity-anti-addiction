@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Anti Addiction - 谷歌健康系统</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="brand">
+        <span class="brand-badge" aria-hidden="true">
+          <svg viewBox="0 0 36 36" fill="none">
+            <path d="M18 3L31 8V17.4C31 25.3 25.4 31.3 18 33.5C10.6 31.3 5 25.3 5 17.4V8L18 3Z" stroke="currentColor" stroke-width="2.2" fill="rgba(255,255,255,0.08)"/>
+            <path d="M18 11.2C14.1 11.2 11 14.3 11 18.2C11 22.1 14.1 25.2 18 25.2C21.5 25.2 24.1 22.9 24.5 19.6H18V17.1H26.9C27.1 17.8 27.2 18.5 27.2 19.2C27.2 24.4 23.3 27.9 18 27.9C12.6 27.9 8.3 23.6 8.3 18.2C8.3 12.8 12.6 8.5 18 8.5C20.5 8.5 22.8 9.4 24.5 11.1L22.5 13C21.3 11.9 19.8 11.2 18 11.2Z" fill="currentColor"/>
+          </svg>
+        </span>
+        <div>
+          <p class="eyebrow">GOOGLE HEALTH SYSTEM</p>
+          <h1>Anti Addiction · 谷歌健康系统</h1>
+        </div>
+      </div>
+      <button id="refresh-btn" type="button" class="icon-btn" title="刷新额度状态">刷新</button>
+    </header>
+
+    <section class="card status-card">
+      <div class="status-grid">
+        <div class="stat">
+          <span class="label">AI 订阅计划</span>
+          <strong id="plan-label">—</strong>
+        </div>
+        <div class="stat">
+          <span class="label">当前对话模型</span>
+          <strong id="model-label">—</strong>
+        </div>
+        <div class="stat">
+          <span class="label">当前额度状态</span>
+          <strong id="quota-state">—</strong>
+        </div>
+        <div class="stat">
+          <span class="label">主窗口注入状态</span>
+          <strong id="overlay-state">—</strong>
+        </div>
+      </div>
+      <p id="status-note" class="muted-note"></p>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>模型组额度监控</h2>
+        <span id="fetched-at" class="muted"></span>
+      </div>
+      <div id="groups-list" class="groups-list"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>弹窗预览与测试</h2>
+        <span class="muted">点击将在 Antigravity 主窗口即时弹出遮罩</span>
+      </div>
+      <div class="preview-actions">
+        <button type="button" class="btn btn-gemini" data-preview="gemini-5h">Gemini RGB · 5h 重置</button>
+        <button type="button" class="btn btn-gemini-outline" data-preview="gemini-weekly">Gemini RGB · Weekly 耗尽</button>
+        <button type="button" class="btn btn-claude" data-preview="claude-5h">Claude 橙色 · 5h 重置</button>
+        <button type="button" class="btn btn-neutral" data-preview="current">按当前模型预览</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>守护规则设置</h2>
+      </div>
+      <div class="settings-list">
+        <label class="setting-row">
+          <span>
+            <strong>启用额度耗尽自动弹窗</strong>
+            <small>当当前模型 5h 或 Weekly 额度归零时自动压暗背景并提示</small>
+          </span>
+          <input id="toggle-enabled" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>
+            <strong>每次 Stop 报错时再次弹出</strong>
+            <small>当对话停止并出现 Error（如额度/积分不足）时每次都重新弹出提醒</small>
+          </span>
+          <input id="toggle-stop-error" type="checkbox">
+        </label>
+
+        <label class="setting-row">
+          <span>
+            <strong>弹窗主题配色</strong>
+            <small>自动模式下：Gemini 用 RGB 炫彩，Claude 用经典暖橙</small>
+          </span>
+          <select id="select-theme">
+            <option value="auto">自动匹配模型</option>
+            <option value="gemini">强制 Gemini RGB</option>
+            <option value="claude">强制 Claude 橙色</option>
+          </select>
+        </label>
+
+        <label class="setting-row">
+          <span>
+            <strong>保留思考等级后缀</strong>
+            <small>例如显示为 Gemini 4 Carbon (High) 而非 Gemini 4 Carbon</small>
+          </span>
+          <input id="toggle-tier" type="checkbox">
+        </label>
+
+        <div class="setting-row">
+          <span>
+            <strong>重置“已确认”记忆</strong>
+            <small>若之前已点击确认关闭了当前周期的弹窗，可清除记忆以便立即再次触发</small>
+          </span>
+          <button id="clear-dismissed-btn" type="button" class="btn btn-neutral btn-sm">清除记忆</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>弹窗内嵌效果预览</h2>
+        <span id="inline-theme-badge" class="pill">Gemini RGB</span>
+      </div>
+      <div id="inline-preview-stage" class="inline-preview-stage" data-theme="gemini">
+        <div class="mini-brand">
+          <span class="mini-shield">G</span>
+          <span>谷歌健康系统</span>
+        </div>
+        <div class="mini-modal">
+          <div class="mini-banner">温馨提示</div>
+          <div class="mini-body">
+            <p class="mini-salutation">尊敬的用户：</p>
+            <p id="mini-message" class="mini-msg"></p>
+            <p id="mini-date" class="mini-date"></p>
+            <p class="mini-health">请合理安排氛围编码时间，保证您的身心健康</p>
+            <div class="mini-btn-row">
+              <span class="mini-btn">确认</span>
+            </div>
+          </div>
+        </div>
+        <div id="mini-serial" class="mini-serial"></div>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

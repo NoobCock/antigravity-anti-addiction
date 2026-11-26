@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="shieldGrad" x1="18" y1="14" x2="110" y2="114" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="38%" stop-color="#6C63FF"/>
+      <stop offset="72%" stop-color="#9B72CB"/>
+      <stop offset="100%" stop-color="#D96570"/>
+    </linearGradient>
+    <linearGradient id="innerGlow" x1="36" y1="28" x2="92" y2="96" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.98"/>
+      <stop offset="100%" stop-color="#E8F0FE" stop-opacity="0.92"/>
+    </linearGradient>
+  </defs>
+  <rect x="12" y="12" width="104" height="104" rx="26" fill="#0F172A"/>
+  <path d="M64 20L100 34V61C100 84.5 84.5 102.5 64 109C43.5 102.5 28 84.5 28 61V34L64 20Z" fill="url(#shieldGrad)"/>
+  <path d="M64 28L92 39V60.5C92 79.4 79.7 94.2 64 100C48.3 94.2 36 79.4 36 60.5V39L64 28Z" fill="#0F172A" fill-opacity="0.88"/>
+  <path d="M64 43C53.5 43 45 51.5 45 62C45 72.5 53.5 81 64 81C73.4 81 80.5 74.8 81.8 66H64V59H88.2C88.7 60.8 89 62.6 89 64.5C89 78.6 78.5 88.5 64 88.5C49.4 88.5 37.5 76.6 37.5 62C37.5 47.4 49.4 35.5 64 35.5C70.9 35.5 77 38.1 81.6 42.5L76.1 47.9C73 44.9 68.8 43 64 43Z" fill="url(#innerGlow)"/>
+</svg>
