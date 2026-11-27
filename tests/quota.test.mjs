@@ -187,6 +187,27 @@ test('evaluateExhaustion never misreports 0% when quota is uninitialized, null, 
   };
   const noResetRes = evaluateExhaustion({ activeModel: 'Gemini 4 Carbon (High)', userStatus, quotaSummary: noResetSummary, now });
   assert.equal(noResetRes.exhausted, false);
+
+  // Expired/stale cached 0% bucket from yesterday must NOT trigger exhaustion
+  const expiredSummary = {
+    response: {
+      groups: [
+        {
+          displayName: 'Gemini Models',
+          description: 'Models within this group: Gemini 4 Carbon',
+          buckets: [
+            { bucketId: 'gemini-5h', window: '5h', remainingFraction: 0, resetTime: '2026-11-25T10:30:00Z' },
+          ],
+        },
+      ],
+    },
+  };
+  const expiredRes = evaluateExhaustion({ activeModel: 'Gemini 4 Carbon (High)', userStatus, quotaSummary: expiredSummary, now });
+  assert.equal(expiredRes.exhausted, false);
+
+  // Unrecognized non-model UI text must NOT match groups[0] and trigger exhaustion
+  const unknownUiRes = evaluateExhaustion({ activeModel: 'antigravity-anti-addiction', userStatus, quotaSummary: sampleSummary, now });
+  assert.equal(unknownUiRes.exhausted, false);
 });
 
 test('formatResetDateTime and formatRemainingDuration format cleanly', () => {
@@ -325,6 +346,101 @@ test('QuotaMonitor re-triggers modal on every new stop error even after window d
     assert.ok(s5.modal);
     assert.equal(s5.modal.triggerReason, 'stop-error');
     assert.equal(s5.modal.errorId, errorId);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('QuotaMonitor never pops up on startup for historical errors, unmounted composer, or non-quota errors', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'ag-aa-init-'));
+  try {
+    const startedNow = Date.parse('2026-11-27T11:37:11Z');
+    let fakeNow = startedNow;
+    const convoId = 'a5579aed-50d3-43ea-90b1-c870e743ddf6';
+    const settings = new SettingsStore({ file: join(dir, 'settings.json'), now: () => fakeNow });
+
+    let steps = [
+      // Historical error from yesterday (before sidecar startup)
+      {
+        type: 'CORTEX_STEP_TYPE_ERROR_MESSAGE',
+        metadata: { createdAt: '2026-11-26T06:45:54Z' },
+        errorMessage: { error: { errorId: '38ca8acd-old-251-2008', errorCode: 429, userErrorMessage: 'Your AI credits balance is too low to continue.' } },
+      },
+    ];
+
+    const healthySummary = {
+      response: {
+        groups: [
+          {
+            displayName: 'Gemini Models',
+            description: 'Models within this group: Gemini 4 Neon',
+            buckets: [
+              { bucketId: 'gemini-weekly', window: 'weekly', remainingFraction: 0.58, resetTime: '2026-12-03T07:06:35Z' },
+              { bucketId: 'gemini-5h', window: '5h', remainingFraction: 1, resetTime: '2026-11-27T16:37:14Z' },
+            ],
+          },
+          {
+            displayName: 'Claude and GPT models',
+            description: 'Models within this group: Claude Opus 5.5',
+            buckets: [
+              { bucketId: '3p-weekly', window: 'weekly', remainingFraction: 0.5, resetTime: '2026-12-03T05:28:05Z' },
+              { bucketId: '3p-5h', window: '5h', remainingFraction: 0, resetTime: '2026-11-27T16:37:14Z' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const mockClient = {
+      async call(method) {
+        if (method === 'GetUserStatus') {
+          return { userStatus: { userTier: { id: 'g1-ultra-lite-tier', name: 'Google AI Ultra' } } };
+        }
+        if (method === 'RetrieveUserQuotaSummary') return healthySummary;
+        if (method === 'GetAllCascadeTrajectories') return { trajectorySummaries: { [convoId]: { stepCount: 20 } } };
+        if (method === 'GetCascadeTrajectorySteps') return { steps };
+        if (method === 'GetCascadeTrajectoryGeneratorMetadata') {
+          return { generatorMetadata: [{ chatModel: { modelDisplayName: 'Claude Opus 5.5' } }] };
+        }
+        return {};
+      },
+    };
+
+    const monitor = new QuotaMonitor({
+      client: mockClient,
+      settings,
+      now: () => fakeNow,
+      isDisabled: () => false,
+    });
+
+    // 1. Composer not yet mounted (uiModel === '') + historical error from yesterday + trajectory fallback to exhausted Claude -> MUST NOT pop up
+    const initSnap = await monitor.snapshot({ uiModel: '', conversationId: convoId, force: true });
+    assert.equal(initSnap.modal, null);
+
+    // 2. Live non-quota error (e.g. network drop) while Gemini quota is healthy -> MUST NOT pop up
+    fakeNow += 5000;
+    steps = [
+      {
+        type: 'CORTEX_STEP_TYPE_ERROR_MESSAGE',
+        metadata: { createdAt: new Date(fakeNow).toISOString() },
+        errorMessage: { error: { errorId: '348cffd8-net-132', errorCode: 503, userErrorMessage: 'Network connection lost' } },
+      },
+    ];
+    const nonQuotaSnap = await monitor.snapshot({ uiModel: 'Gemini 4 Neon', conversationId: convoId, force: true });
+    assert.equal(nonQuotaSnap.modal, null);
+
+    // 3. Live 429 quota/credits error -> MUST pop up immediately
+    fakeNow += 5000;
+    steps = [
+      {
+        type: 'CORTEX_STEP_TYPE_ERROR_MESSAGE',
+        metadata: { createdAt: new Date(fakeNow).toISOString() },
+        errorMessage: { error: { errorId: '38ca8acd-new-300-2008', errorCode: 429, userErrorMessage: 'Your AI credits balance is too low to continue.' } },
+      },
+    ];
+    const realQuotaErrSnap = await monitor.snapshot({ uiModel: 'Gemini 4 Neon', conversationId: convoId, force: true });
+    assert.ok(realQuotaErrSnap.modal);
+    assert.equal(realQuotaErrSnap.modal.serialId, '38ca8acd-new-300-2008');
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

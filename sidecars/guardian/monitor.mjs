@@ -4,6 +4,23 @@ import { evaluateExhaustion, buildSerialId, formatResetDateTime, formatRemaining
 import { isPluginDisabledInConfig } from './paths.mjs';
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const QUOTA_ERROR_RE = /RESOURCE_EXHAUSTED|INSUFFICIENT_G1_CREDITS_BALANCE|credits balance is too low|exhausted your capacity|quota|rate.?limit|too many requests|\b429\b/i;
+const STOP_ERROR_MAX_AGE_MS = 120_000;
+
+export function isQuotaStopError(err) {
+  if (!err || typeof err !== 'object') return false;
+  if (Number(err.errorCode) === 429) return true;
+  if (String(err.userErrorNumber || '') === '2008') return true;
+  const fields = [
+    err.userErrorMessage,
+    err.modelErrorMessage,
+    err.shortError,
+    err.details,
+    err.fullError,
+    ...(Array.isArray(err.rpcErrorDetails) ? err.rpcErrorDetails : []),
+  ];
+  return fields.some(text => typeof text === 'string' && QUOTA_ERROR_RE.test(text));
+}
 
 export class QuotaMonitor {
   constructor({ client = new AntigravityClient(), settings, now = Date.now, isDisabled = () => isPluginDisabledInConfig('anti-addiction') } = {}) {
@@ -92,8 +109,9 @@ export class QuotaMonitor {
         const step = steps[i];
         if (step?.type !== 'CORTEX_STEP_TYPE_ERROR_MESSAGE') continue;
         const createdMs = Date.parse(step?.metadata?.createdAt || '');
-        // Only treat errors occurring around/after sidecar startup as live stop events
-        if (Number.isFinite(createdMs) && createdMs < this.startedAt - 10_000) break;
+        // Strictly ignore missing timestamps, historical pre-startup errors, and stale errors
+        if (!Number.isFinite(createdMs)) continue;
+        if (createdMs < this.startedAt || now - createdMs > STOP_ERROR_MAX_AGE_MS) break;
         const err = step?.errorMessage?.error || {};
         const stepIndex = step?.metadata?.sourceTrajectoryStepInfo?.stepIndex ?? (startIndex + i);
         const errorId = err.errorId || `${conversationId}:${stepIndex}:${step?.metadata?.createdAt || ''}`;
@@ -102,6 +120,7 @@ export class QuotaMonitor {
           createdAt: step?.metadata?.createdAt || new Date(now).toISOString(),
           userErrorMessage: err.userErrorMessage || '',
           errorCode: err.errorCode ?? null,
+          isQuotaError: isQuotaStopError(err),
         };
         break;
       }
@@ -190,8 +209,10 @@ export class QuotaMonitor {
     };
   }
 
-  async snapshot({ uiModel = '', conversationId = null, observedErrorId = null, force = false } = {}) {
-    if (uiModel) this.lastUiModel = uiModel;
+  async snapshot({ uiModel = '', conversationId = null, force = false } = {}) {
+    const cleanUiModel = typeof uiModel === 'string' ? uiModel.trim() : '';
+    const hasLiveUiModel = cleanUiModel.length > 0;
+    if (hasLiveUiModel) this.lastUiModel = cleanUiModel;
     if (conversationId) this.lastConversationId = conversationId;
 
     const settings = await this.settings.get();
@@ -199,11 +220,10 @@ export class QuotaMonitor {
     const active = settings.enabled && !disabledByPlugin;
 
     const targetConvo = conversationId || this.lastConversationId;
-    const hasObservedError = typeof observedErrorId === 'string' && observedErrorId.trim().length > 0;
 
-    await this.refreshQuota(force || hasObservedError);
+    await this.refreshQuota(force);
 
-    let activeModel = uiModel || this.lastUiModel;
+    let activeModel = cleanUiModel || this.lastUiModel;
     if (!activeModel && targetConvo) {
       activeModel = await this.resolveFallbackModel(targetConvo);
     }
@@ -217,10 +237,14 @@ export class QuotaMonitor {
     });
 
     const backendStopError = (active && settings.triggerOnStopError !== false && targetConvo)
-      ? await this.detectLatestStopError(targetConvo, force || hasObservedError)
+      ? await this.detectLatestStopError(targetConvo, force)
       : null;
 
-    const stopErrorId = backendStopError?.errorId || (hasObservedError ? observedErrorId.trim() : null);
+    const eligibleStopError = Boolean(
+      backendStopError
+      && (backendStopError.isQuotaError || evaluation.exhausted),
+    );
+    const stopErrorId = eligibleStopError ? backendStopError.errorId : null;
     const stopErrorUndismissed = Boolean(
       active
       && settings.triggerOnStopError !== false
@@ -231,10 +255,14 @@ export class QuotaMonitor {
     const dismissed = Boolean(evaluation.exhaustionKey && settings.dismissedKeys?.[evaluation.exhaustionKey]);
     const previewModal = this.buildPreviewState(evaluation, settings);
 
+    // Only trigger proactive exhaustion modal when renderer actually has a live mounted model selector
+    // and both userStatus + quotaSummary have finished loading.
+    const quotaDataReady = Boolean(this.quotaSummary && this.userStatus && hasLiveUiModel);
+
     let modal = null;
     if (previewModal) {
       modal = previewModal;
-    } else if (active && (stopErrorUndismissed || (evaluation.exhausted && !dismissed))) {
+    } else if (active && (stopErrorUndismissed || (quotaDataReady && evaluation.exhausted && !dismissed))) {
       modal = {
         isPreview: false,
         triggerReason: stopErrorUndismissed ? 'stop-error' : 'quota-exhausted',

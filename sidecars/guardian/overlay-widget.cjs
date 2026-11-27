@@ -35,7 +35,7 @@ module.exports = function installAntiAddictionOverlay() {
   let inflight = false;
   let debounceTimer = null;
   let seenDomErrorIds = new Set();
-  let pendingObservedErrorId = null;
+  let pendingForceSync = false;
   let domBaselineReady = false;
 
   function el(tag, className, textContent) {
@@ -453,8 +453,9 @@ module.exports = function installAntiAddictionOverlay() {
 
     const selectors = [
       '[data-testid="model-selector-trigger"]',
-      'button[role="combobox"][aria-haspopup]',
       'button[aria-label^="Select model"]',
+      '[data-testid="agent-input-box"] button[role="combobox"][aria-haspopup]',
+      '[id="antigravity.agentSidePanelInputBox"] button[role="combobox"][aria-haspopup]',
     ];
 
     const candidates = [];
@@ -489,8 +490,8 @@ module.exports = function installAntiAddictionOverlay() {
     return viewId && GUID.test(viewId) ? viewId : null;
   }
 
-  async function sync(force = false, observedErrorId = null) {
-    if (observedErrorId) pendingObservedErrorId = observedErrorId;
+  async function sync(force = false) {
+    if (force) pendingForceSync = true;
     if (disposed || inflight) return;
     inflight = true;
     lastFetchAt = Date.now();
@@ -504,13 +505,12 @@ module.exports = function installAntiAddictionOverlay() {
       }
       lastModelKey = uiModel;
       lastConvoKey = conversationId || '';
-      const errToSend = pendingObservedErrorId;
-      pendingObservedErrorId = null;
+      const shouldForce = pendingForceSync;
+      pendingForceSync = false;
       const state = await host()?.getState({
         uiModel,
         conversationId,
-        observedErrorId: errToSend,
-        force: force || Boolean(errToSend),
+        force: shouldForce,
       });
       if (disposed || !state) return;
       if (state.modal) {
@@ -522,19 +522,19 @@ module.exports = function installAntiAddictionOverlay() {
       // Next poll recovers cleanly
     } finally {
       inflight = false;
-      if (pendingObservedErrorId && !disposed) {
+      if (pendingForceSync && !disposed) {
         queueMicrotask(() => { void sync(true); });
       }
     }
   }
 
-  function scheduleSync(delayMs = 200, observedErrorId = null) {
-    if (observedErrorId) pendingObservedErrorId = observedErrorId;
+  function scheduleSync(delayMs = 200, force = false) {
+    if (force) pendingForceSync = true;
     if (disposed) return;
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       debounceTimer = null;
-      void sync(Boolean(pendingObservedErrorId));
+      void sync(pendingForceSync);
     }, delayMs);
   }
 
@@ -543,13 +543,14 @@ module.exports = function installAntiAddictionOverlay() {
     if (hostEl && records.every(r => r.target === hostEl || hostEl.contains(r.target))) return;
     const newErr = detectNewDomError();
     if (newErr) {
-      scheduleSync(120, newErr);
+      // Only wake up backend verification immediately; never trust DOM text directly
+      scheduleSync(150, true);
       return;
     }
     const currentModel = detectActiveUiModel();
     const currentConvo = detectConversationId() || '';
     if (currentModel !== lastModelKey || currentConvo !== lastConvoKey) {
-      scheduleSync(180);
+      scheduleSync(180, false);
     }
   });
   observer.observe(document.documentElement, {
@@ -567,7 +568,7 @@ module.exports = function installAntiAddictionOverlay() {
     const currentConvo = detectConversationId() || '';
     const due = Date.now() - lastFetchAt > (document.hidden ? 10000 : 2500);
     if (newErr || currentModel !== lastModelKey || currentConvo !== lastConvoKey || due) {
-      void sync(Boolean(newErr), newErr);
+      void sync(Boolean(newErr));
     }
   }, 1000);
 

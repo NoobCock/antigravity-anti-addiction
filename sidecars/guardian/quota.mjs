@@ -109,7 +109,7 @@ export function parseQuotaGroups(response, now = Date.now()) {
   }));
 }
 
-export function matchQuotaGroup(activeModel, groups = []) {
+export function matchQuotaGroup(activeModel, groups = [], { fallbackFirst = false } = {}) {
   if (!Array.isArray(groups) || !groups.length) return null;
   const clean = normalizeModelName(activeModel, { includeTier: false }).toLowerCase();
   if (clean) {
@@ -131,7 +131,7 @@ export function matchQuotaGroup(activeModel, groups = []) {
       if (thirdParty) return thirdParty;
     }
   }
-  return groups[0];
+  return fallbackFirst ? groups[0] : null;
 }
 
 export function formatResetDateTime(isoOrMs) {
@@ -207,6 +207,7 @@ export function evaluateExhaustion({
   const isZero = windowObj =>
     Boolean(windowObj?.available)
     && !windowObj.disabled
+    && !windowObj.expired
     && typeof windowObj.remaining === 'number'
     && Number.isFinite(windowObj.remaining)
     && windowObj.remaining <= 1e-6
@@ -239,11 +240,11 @@ export function evaluateExhaustion({
     const rawFrac = modelCfg?.quotaInfo?.remainingFraction;
     const hasNumericFrac = typeof rawFrac === 'number' || (typeof rawFrac === 'string' && rawFrac.trim() !== '');
     const frac = hasNumericFrac ? Number(rawFrac) : NaN;
-    if (modelCfg?.quotaInfo?.resetTime && Number.isFinite(frac) && frac <= 1e-6) {
+    const ms = Date.parse(modelCfg?.quotaInfo?.resetTime || '');
+    if (Number.isFinite(ms) && ms > now && Number.isFinite(frac) && frac <= 1e-6) {
       exhausted = true;
       resetSource = '5h';
-      const ms = Date.parse(modelCfg.quotaInfo.resetTime);
-      resetAt = Number.isFinite(ms) ? new Date(ms).toISOString() : null;
+      resetAt = new Date(ms).toISOString();
     }
   }
 

@@ -336,9 +336,8 @@ export class OverlayInjector {
         const payload = input.input && typeof input.input === 'object' ? input.input : {};
         const uiModel = typeof payload.uiModel === 'string' ? payload.uiModel.slice(0, 160) : '';
         const conversationId = GUID.test(payload.conversationId || '') ? payload.conversationId : null;
-        const observedErrorId = typeof payload.observedErrorId === 'string' ? payload.observedErrorId.slice(0, 200) : null;
         const force = payload.force === true;
-        result = await this.monitor.snapshot({ uiModel, conversationId, observedErrorId, force });
+        result = await this.monitor.snapshot({ uiModel, conversationId, force });
       } else if (input.type === 'dismiss') {
         const payload = input.input && typeof input.input === 'object' ? input.input : {};
         if (payload.isPreview) {
